@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+.local/
+.env
+.env.*
+*.pem
+*.key
+*.ipa
+*.xcarchive/
+.DS_Store

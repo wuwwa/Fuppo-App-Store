@@ -1,0 +1,92 @@
+name: Container qualification
+
+# Builds and starts the production container locally on the runner. No deploy.
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      upload_image:
+        description: Preserve the qualified image for a calling deployment workflow
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-check-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  container:
+    name: Build, scan and check production container
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install verified Trivy binary
+        id: trivy-install
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/aquasecurity/trivy/releases/download/v0.74.0/trivy_0.74.0_Linux-64bit.tar.gz \
+            --output "$RUNNER_TEMP/trivy.tar.gz"
+          printf '%s  %s\n' '2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a' "$RUNNER_TEMP/trivy.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/trivy.tar.gz" -C "$RUNNER_TEMP" trivy
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Build production container
+        id: container-build
+        run: docker build --pull --platform linux/amd64 --build-arg PIPELINE_METRICS_ENABLED=0 --build-arg PIPELINE_SOURCE_REVISION="$GITHUB_SHA" --build-arg PIPELINE_SOURCE_DIRTY=0 --tag pipeline-release-check .
+      - name: Scan production container
+        id: trivy-scan
+        run: node scripts/scan-image.mjs pipeline-release-check
+      - name: Start production container
+        id: container-start
+        run: docker run --detach --name pipeline-release-check --publish 127.0.0.1:4173:8080 pipeline-release-check
+      - name: Check health, headers and source identity
+        id: runtime-smoke
+        run: node qa/container-smoke.mjs
+      - name: Export qualified image
+        if: inputs.upload_image
+        shell: bash
+        run: docker save pipeline-release-check | gzip > "$RUNNER_TEMP/qualified-image.tar.gz"
+      - name: Preserve qualified image
+        if: inputs.upload_image
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: qualified-production-image
+          path: ${{ runner.temp }}/qualified-image.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+      - name: Show container logs and stop it
+        if: always()
+        run: |
+          docker logs pipeline-release-check || true
+          docker rm --force pipeline-release-check || true
+      - name: Summarize container checks
+        if: always()
+        shell: bash
+        env:
+          TRIVY_INSTALL: ${{ steps.trivy-install.outcome }}
+          CONTAINER_BUILD: ${{ steps.container-build.outcome }}
+          TRIVY_SCAN: ${{ steps.trivy-scan.outcome }}
+          CONTAINER_START: ${{ steps.container-start.outcome }}
+          RUNTIME_SMOKE: ${{ steps.runtime-smoke.outcome }}
+        run: |
+          {
+            echo '### Container security and runtime'
+            echo '| Check | Result |'
+            echo '| --- | --- |'
+            echo "| Install verified Trivy | $TRIVY_INSTALL |"
+            echo "| Build production image | $CONTAINER_BUILD |"
+            echo "| Scan fixable High/Critical vulnerabilities | $TRIVY_SCAN |"
+            echo "| Start production container | $CONTAINER_START |"
+            echo "| Check health, headers and shipped assets | $RUNTIME_SMOKE |"
+          } >> "$GITHUB_STEP_SUMMARY"

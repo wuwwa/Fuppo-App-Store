@@ -1,0 +1,1 @@
+throw new Error('Application '+process.argv[2]+' adapter is intentionally absent. Integrate real browser/touch checks before using qa:release. Pipeline unit tests and the fixture demo do not qualify an application.');

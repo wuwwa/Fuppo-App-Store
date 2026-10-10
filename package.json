@@ -1,0 +1,23 @@
+{
+  "name": "cicd-pipeline",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Generalized web and iOS CI/CD orchestration",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "test:release": "node --test tests/*.test.mjs",
+    "build:platforms": "node scripts/adapter-required.mjs web-and-offline-build",
+    "verify:platforms": "node scripts/adapter-required.mjs platform-parity",
+    "qa:release": "node scripts/validate-local-pr.mjs --release",
+    "qa:browser": "node scripts/adapter-required.mjs browser",
+    "qa:touch": "node scripts/adapter-required.mjs touch",
+    "release:check": "node scripts/release.mjs",
+    "deploy": "node scripts/release.mjs --deploy",
+    "ios:plan": "node scripts/native-plan.mjs",
+    "verify:ios-results": "node scripts/validate-ios-test-results.mjs"
+  }
+}

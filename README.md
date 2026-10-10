@@ -1,8 +1,43 @@
-The actual repo is private. 
-View the app at: fuppo.app
+The actual application repository is private. View the app at
+[fuppo.app](https://fuppo.app).
 
 # Web and iOS CI/CD pipeline
 
+Generalized pipeline tooling and process diagram extracted from a private project.
+Application source, assets, native host, credentials, account/device identities,
+operational receipts and Git history are excluded.
+
+Pipeline regression tests run with Node.js 24+: `npm ci`, then `npm test`.
+Tests use injected commands and synthetic test-result data; they do not deploy,
+publish statuses or execute Xcode. Real application build/browser/touch/parity
+adapters are intentionally absent and fail explicitly until integrated. The
+`application/` Docker/fingerprint input and native project are integration placeholders.
+Fly deployment remains unconfigured and its checked-in target is a placeholder.
+CI runs automatically for pull requests and pushes to `main`. Container qualification
+and CD are manual; CD defaults to qualification only and cannot deploy until a real
+application, repository variable, protected environment and token are configured.
+`ios:plan` prints arguments only.
+
+## GitHub Actions
+
+- **CI** runs the Node.js 24 regression suite on Ubuntu and Windows for pull
+  requests and pushes to `main`.
+- **Container qualification** manually builds the production image, verifies the
+  pinned Trivy download, rejects fixable High/Critical vulnerabilities, and smoke
+  tests the running container. It intentionally fails until `application/` and the
+  real build adapter are integrated.
+- **CD** is a manual release-candidate workflow. It reruns release tests and
+  container qualification, then carries the exact checked image into deployment
+  and releases its immutable registry digest. Deployment is opt-in, restricted to
+  `main`, and requires all of the following: a non-placeholder application
+  integration, a `FLY_APP_NAME` repository variable, a protected `production`
+  environment, a `FLY_API_TOKEN` environment secret, and an exact application-name
+  confirmation when dispatching the workflow.
+- Dependabot checks npm and pinned GitHub Action dependencies weekly.
+
+For this public showcase, leave `deploy` unchecked. Forks that enable deployment
+must also replace the `example-app` safeguards in `fly.toml` and
+`scripts/release.mjs` with reviewed project-specific configuration.
 
 The diagram describes the full delivery process after application integration.
 
@@ -72,4 +107,3 @@ flowchart TD
         N13 -->|Yes| N14 --> N15
     end
 ```
-"# Fuppo-App-Store" 
