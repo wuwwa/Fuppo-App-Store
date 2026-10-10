@@ -1,20 +1,10 @@
+The actual repo is private. 
+View the app at: fuppo.app
+
 # Web and iOS CI/CD pipeline
 
-Generalized pipeline tooling and process diagram extracted from a private project.
-Application source, assets, native host, credentials, account/device identities,
-operational receipts and Git history are excluded.
-
-Pipeline regression tests run with Node.js 24+: `npm ci`, then `npm test`.
-Tests use injected commands and synthetic test-result data; they do not deploy,
-publish statuses or execute Xcode. Real application build/browser/touch/parity
-adapters are intentionally absent and fail explicitly until integrated. The
-`application/` Docker/fingerprint input and native project are integration placeholders.
-Fly deployment is disabled and its target is a placeholder. Workflows are manual,
-gated off by default, and do not deploy. `ios:plan` prints arguments only.
 
 The diagram describes the full delivery process after application integration.
-Website delivery and iOS distribution are independent; TestFlight is optional and
-public App Store publication requires manual release after Apple approval.
 
 ```mermaid
 flowchart TD
