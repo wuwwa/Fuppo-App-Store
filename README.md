@@ -1,109 +1,113 @@
-The actual application repository is private. View the app at
-[fuppo.app](https://fuppo.app).
+# Web and iOS CI/CD Pipeline
 
-# Web and iOS CI/CD pipeline
+This repository demonstrates the delivery controls used for a web and iOS
+application. The application source is private. The public application is
+available at [fuppo.app](https://fuppo.app).
 
-Generalized pipeline tooling and process diagram extracted from a private project.
-Application source, assets, native host, credentials, account/device identities,
-operational receipts and Git history are excluded.
+## Purpose
 
-Pipeline regression tests run with Node.js 24+: `npm ci`, then `npm test`.
-Tests use injected commands and synthetic test-result data; they do not deploy,
-publish statuses or execute Xcode. Real application build/browser/touch/parity
-adapters are intentionally absent and fail explicitly until integrated. The
-`application/` Docker/fingerprint input and native project are integration placeholders.
-Fly deployment remains unconfigured and its checked-in target is a placeholder.
-CI runs automatically for pull requests and pushes to `main`. Container qualification
-and CD are manual; CD defaults to qualification only and cannot deploy until a real
-application, repository variable, protected environment and token are configured.
-`ios:plan` prints arguments only.
+Use this repository to review or adapt the pipeline design without exposing the
+production application, credentials, signing identities, device records, or
+release history.
+
+The repository includes:
+
+- Cross-platform Node.js CI for Ubuntu and Windows.
+- Container build, vulnerability scan, and runtime smoke-test steps.
+- A manual, approval-gated Fly.io deployment workflow.
+- Release guards for source identity and immutable image deployment.
+- Testable iOS build and qualification planning utilities.
+
+The repository does not include the application source, native Xcode project,
+deployment credentials, or real browser and touch-test adapters.
+
+## Run Locally
+
+Install Node.js 24 or later, then run:
+
+```shell
+npm ci --ignore-scripts
+npm test
+```
+
+The test suite uses injected commands and synthetic results. It does not deploy,
+publish commit statuses, run Xcode, or contact production services.
 
 ## GitHub Actions
 
-- **CI** runs the Node.js 24 regression suite on Ubuntu and Windows for pull
-  requests and pushes to `main`.
-- **Container qualification** manually builds the production image, verifies the
-  pinned Trivy download, rejects fixable High/Critical vulnerabilities, and smoke
-  tests the running container. It intentionally fails until `application/` and the
-  real build adapter are integrated.
-- **CD** is a manual release-candidate workflow. It reruns release tests and
-  container qualification, then carries the exact checked image into deployment
-  and releases its immutable registry digest. Deployment is opt-in, restricted to
-  `main`, and requires all of the following: a non-placeholder application
-  integration, a `FLY_APP_NAME` repository variable, a protected `production`
-  environment, a `FLY_API_TOKEN` environment secret, and an exact application-name
-  confirmation when dispatching the workflow.
-- Dependabot checks npm and pinned GitHub Action dependencies weekly.
+| Workflow | Trigger | Purpose |
+| --- | --- | --- |
+| CI | Pull requests, pushes to `main`, or manual dispatch | Runs the Node.js 24 test suite on Ubuntu and Windows. |
+| Container qualification | Manual dispatch or CD workflow | Builds the image, verifies Trivy, scans for fixable High and Critical vulnerabilities, and smoke tests the container. |
+| CD | Manual dispatch | Tests and qualifies a release candidate. Deployment is disabled unless the operator explicitly requests it. |
+| Dependabot | Weekly | Proposes npm and GitHub Actions updates after a seven-day cooldown. |
 
-For this public showcase, leave `deploy` unchecked. Forks that enable deployment
-must also replace the `example-app` safeguards in `fly.toml` and
-`scripts/release.mjs` with reviewed project-specific configuration.
+CI is ready to run in this repository. Container qualification and CD require a
+real `application/` directory and build adapter.
 
-The diagram describes the full delivery process after application integration.
+## Deployment Controls
+
+The CD workflow deploys only when every control passes:
+
+1. The workflow runs from `main`.
+2. Unit, container security, and runtime checks pass.
+3. The `FLY_APP_NAME` repository variable names the target application.
+4. The operator enters the same application name when starting the workflow.
+5. The protected `production` environment approves the job.
+6. The environment provides the `FLY_API_TOKEN` secret.
+
+The workflow exports the qualified container, pushes that exact image, resolves
+its registry digest, and deploys the digest. It does not rebuild the image after
+qualification.
+
+For this showcase, leave the `deploy` option off. Before enabling deployment in a
+fork, replace the `example-app` placeholders in `fly.toml` and
+`scripts/release.mjs`, add the application adapter, and review the environment
+protection rules.
+
+## Security Controls
+
+- Workflows receive read-only repository permissions by default.
+- Third-party Actions use full commit SHAs.
+- Checkout steps do not persist Git credentials.
+- The Trivy archive is version-pinned and checksum-verified.
+- Deployment secrets are available only to the protected deployment job.
+- Qualified image artifacts expire after one day.
+- Release scripts reject dirty, non-`main`, or unsynchronized source trees.
+
+## Delivery Flow
+
+Website delivery and iOS distribution are independent. TestFlight distribution
+is optional. Public App Store release remains a manual decision after Apple
+approval.
 
 ```mermaid
 flowchart TD
-    subgraph Development["Development"]
-        A["Latest main + short-lived neutral branch<br/>npm ci for setup"]
-        B["Edit source; assess web/iOS impact<br/>Preserve saved IDs/settings"]
-        C["Live preview + useful focused checks"]
-        D["Authorized push + PR<br/>Platform impact and evidence"]
-        E{"Review passes?"}
-        F["Merge into main<br/>Channels unchanged"]
-        A --> B --> C --> D --> E
-        E -->|Fix| B
-        E -->|Yes| F
-    end
+    A[Create a short-lived branch] --> B[Run focused checks]
+    B --> C[Open a pull request]
+    C --> D{Review and CI pass?}
+    D -->|No| B
+    D -->|Yes| E[Merge to main]
 
-    subgraph Qualification["Local release qualification"]
-        G["Explicit owner release/qualification request"]
-        H["Website: inventory all pending work<br/>Integrate through release PR if needed<br/>Record held/withdrawn work"]
-        I["Freeze clean candidate; qa:release<br/>Paired builds, parity, units, browser/touch<br/>Credentials + relevant feature/feel evidence"]
-        J{"Candidate evidence passes?"}
-        K["Merge release PR if present<br/>Clean main = origin/main<br/>Bind evidence to exact release source"]
-        L{"Which delivery is authorized?"}
-        Q["Qualification only: retain receipts<br/>Channels remain unchanged"]
-        F --> G --> H --> I --> J
-        J -->|No| RFix["Revise candidate<br/>Restart developer loop"]
-        J -->|Yes| K --> L
-        L -->|Neither| Q
-    end
+    E --> F[Start release qualification]
+    F --> G[Run unit and platform checks]
+    G --> H{Candidate passes?}
+    H -->|No| A
+    H -->|Yes| I{Select delivery channel}
 
-    subgraph Website["Website - Fly"]
-        W1["npm run deploy<br/>Source guard + units + fresh container"]
-        W2["Trivy scan + container smoke<br/>Failure stops delivery"]
-        W3["Push checked image<br/>Deploy immutable digest to Fly app example-app"]
-        W4["Verify live pages + build-info.json<br/>Record release and iOS catch-up"]
-        L -->|Website| W1 --> W2 --> W3 --> W4
-    end
+    I -->|Web| J[Build and scan container]
+    J --> K[Smoke test qualified image]
+    K --> L[Push image and resolve digest]
+    L --> M[Approve production environment]
+    M --> N[Deploy immutable digest to Fly.io]
 
-    subgraph iOS["iOS - Mac and Xcode"]
-        N1["Compare with last distributed iOS source<br/>Include accumulated changes"]
-        N2["Same Mac checkout: build:platforms<br/>Web/offline parity; native core only"]
-        N3["Xcode: Swift + embedded offline Web files<br/>ios:sim / ios:device verify and install"]
-        N4["ios:qualify + applicable native checks<br/>Physical upgrade, offline use, touch,<br/>sound/haptics, accessibility/performance"]
-        N5{"Channel gates satisfied?"}
-        N6["ios:archive with new build number<br/>Fresh signed Release archive; verify"]
-        N7["Xcode export IPA<br/>--for-testflight signing/bundle verification<br/>Compare embedded source identity"]
-        N8["Authorized Apple upload<br/>Processing + export compliance"]
-        N9{"TestFlight distribution selected?"}
-        N10["Assign build to authorized TestFlight group<br/>External review when required<br/>Install/update; record feedback"]
-        N11["Accept build or resolve feedback"]
-        N12["Authorized App Store submission<br/>Metadata, screenshots, privacy/support/markets<br/>Accepted build + manual release setting"]
-        N13{"Apple approves?"}
-        N14["Pending Developer Release<br/>Wait for owner's public-release authorization"]
-        N15["Owner-authorized manual publication<br/>Verify public availability; record release"]
-        L -->|iOS independently| N1 --> N2 --> N3 --> N4 --> N5
-        N5 -->|Code correction| NFix["Revise source and qualify new candidate<br/>Restart developer loop"]
-        N5 -->|Evidence or owner decision pending| NPending["Keep iOS delivery pending<br/>Complete the missing review/evidence"]
-        NPending --> N4
-        N5 -->|Yes| N6 --> N7 --> N8 --> N9
-        N9 -->|Yes| N10 --> N11
-        N11 -->|Accepted build; submission authorized| N12
-        N9 -->|No; submission authorized| N12
-        N11 -->|Replacement needed| NFix
-        N12 --> N13
-        N13 -->|No| NReview["Resolve review issues<br/>Metadata: return to submission<br/>New binary: restart developer loop"]
-        N13 -->|Yes| N14 --> N15
-    end
+    I -->|iOS| O[Build web and native targets on macOS]
+    O --> P[Test simulator and physical device]
+    P --> Q[Create and verify signed archive]
+    Q --> R[Upload to App Store Connect]
+    R --> S{Distribution selected?}
+    S -->|TestFlight| T[Assign build and collect feedback]
+    S -->|App Store| U[Submit for Apple review]
+    T --> U
+    U --> V[Release after approval and owner authorization]
 ```
